@@ -1,8 +1,16 @@
 import numpy as np
-from tqdm import tqdm
+try:
+    from tqdm import tqdm
+    use_tqdm = True
+except ImportError:
+    use_tqdm = False
+    print("Optional tqdm package for showing a progress-bar is not installed.")
 import scipy.linalg as sl
 from functools import cached_property
-import os, glob, warnings
+import os
+import glob
+import warnings
+import time
 from enterprise_extensions import model_utils, blocks
 from PTMCMCSampler.PTMCMCSampler import PTSampler as ptmcmc
 from enterprise.signals import signal_base, gp_signals
@@ -105,7 +113,7 @@ class BayesPowerSingle(object):
         self.low = 10 ** (2 * self.rhomin)
         self.high = 10 ** (2 * self.rhomax)
 
-        ##Making the pta object
+        # Making the pta object
         if self.tm_marg:
             tm = gp_signals.MarginalizingTimingModel(use_svd=True)
             if self.white_vary:
@@ -306,10 +314,10 @@ class BayesPowerSingle(object):
         xnew[wind] = x0
         self.start_wn_iter = ii
 
-        ##Do some caching of "later needed" parameters for improved performance
+        # Do some caching of "later needed" parameters for improved performance
         self.Nmat = self.pta.get_ndiag(self.map_params(xnew))[0]
         Tmat = self.Tmat
-        if not "basis" in self.ecorr_type:
+        if "basis" not in self.ecorr_type:
             self.TNT = self.Nmat.solve(Tmat, left_array=Tmat)
         else:
             TN = Tmat / self.Nmat[:, None]
@@ -355,7 +363,7 @@ class BayesPowerSingle(object):
         # whitened residuals
         yred = self._residuals - self.Tmat @ self._b
         try:
-            if not "basis" in self.ecorr_type:
+            if "basis" not in self.ecorr_type:
                 rNr, logdet_N = Nmat.solve(yred, left_array=yred, logdet=True)
             else:
                 rNr = np.sum(yred**2 / Nmat)
@@ -465,7 +473,7 @@ class BayesPowerSingle(object):
         if self.white_vary:
             isave = int(
                 4e9
-            )  ## large number to avoid saving the white noise choice in a txt file
+            )  # large number to avoid saving the white noise choice in a txt file
             thin = 1
             Niter = int(niter * wniters + 1)
 
@@ -545,10 +553,18 @@ class BayesPowerSingle(object):
             shape=(niter, len_x + len_b),
             fortran_order=False,
         )
-
-        pbar = tqdm(range(niter), colour="GREEN")
-        pbar.set_description("Sampling %s" % self.name)
+        if use_tqdm:
+            pbar = tqdm(range(niter), colour="GREEN")
+            pbar.set_description("Sampling %s" % self.name)
+        else:
+            pbar = range(niter)
+            st = time.time()
+            pbar_freq = int(2/100 * niter)
         for ii in pbar:
+            if not use_tqdm:
+                if not ii %pbar_freq and ii:
+                    print(f'Sampling {self.name} -- {round(ii/niter * 100, 2)} Percent Done in {round((time.time() - st)/60, 2)} Minutes.', end='\r')
+
             if self.white_vary:
                 xnew = self.update_white_params(xnew, iters=wniters)
 
